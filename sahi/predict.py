@@ -148,8 +148,10 @@ def get_batch_prediction(
     detection_model,
     shift_amount_list: List[List[int]] = None,
     full_shape: List[int] = None,
+    return_batch_timings: bool = False,
     exclude_classes_by_name: Optional[List[str]] = None,
     exclude_classes_by_id: Optional[List[int]] = None,
+    verbose: int = 0,
 ) -> List[PredictionResult]:
     """
     Function for performing batch prediction for given images using given detection_model.
@@ -177,16 +179,22 @@ def get_batch_prediction(
     if shift_amount_list is None:
         shift_amount_list = [[0, 0]] * len(image_list)
         
-    durations_in_seconds = dict()
-    results = []
+    durations_in_seconds: Dict[str, float] = {}
+    results: List[PredictionResult] = []
 
-    # Check if we can do batch processing with this model type
-    if isinstance(detection_model, UltralyticsDetectionModel):
+    # Determine device and whether batching is allowed (only GPU/MPS)
+    is_cpu = False
+    if hasattr(detection_model, "device"):
+        device_str = str(detection_model.device).lower()
+        is_cpu = "cpu" in device_str  # treat only pure CPU as non-batch
+
+    can_batch = (not is_cpu) and isinstance(detection_model, UltralyticsDetectionModel)
+
+    if can_batch:
         try:
-            # Prepare images for batch processing
-            images_processed = []
-            full_shapes = []
-            
+            # Prepare images for batch processing (convert to contiguous RGB arrays)
+            images_processed: List[np.ndarray] = []
+            full_shapes: List[List[int]] = []
             for image in image_list:
                 image_as_pil = read_image_as_pil(image)
                 images_processed.append(np.ascontiguousarray(image_as_pil))
@@ -194,41 +202,76 @@ def get_batch_prediction(
                     full_shapes.append([image_as_pil.height, image_as_pil.width])
                 else:
                     full_shapes.append(full_shape)
-                    
-            # Perform batch inference
-            time_start = time.time()
-            detection_model.perform_batch_inference(images_processed)
-            time_end = time.time() - time_start
-            durations_in_seconds["prediction"] = time_end
 
-            # Process batch results
-            time_start = time.time()
+            # Batch inference timing
+            if verbose >= 1:
+                logger.info(
+                    f"Batch inference start: num_images={len(images_processed)}, device={getattr(detection_model, 'device', 'unknown')}"
+                )
+            t_start_pred = time.time()
+            detection_model.perform_batch_inference(images_processed)
+            durations_in_seconds["prediction"] = time.time() - t_start_pred
+
+            # Convert predictions timing
+            t_start_convert = time.time()
             detection_model.convert_batch_predictions(
                 shift_amount_list=shift_amount_list,
                 full_shape_list=full_shapes,
             )
-            
-            # Create individual results
+            convert_time = time.time() - t_start_convert
+            durations_in_seconds["postprocess"] = convert_time  # conversion analogous to per-image postprocess phase
+
+            if verbose >= 1:
+                logger.info(
+                    f"Batch inference done: prediction={durations_in_seconds['prediction']:.3f}s, convert={convert_time:.3f}s"
+                )
+
+            # Create per-image results; distribute times uniformly (approximation)
+            per_image_pred_time = durations_in_seconds["prediction"] / max(1, len(image_list))
+            per_image_post_time = durations_in_seconds["postprocess"] / max(1, len(image_list))
+
             for i, object_prediction_list in enumerate(detection_model.object_prediction_list_per_image):
                 filtered_predictions = filter_predictions(
                     object_prediction_list, exclude_classes_by_name, exclude_classes_by_id
                 )
-                results.append(PredictionResult(
-                    image=image_list[i], 
-                    object_prediction_list=filtered_predictions, 
-                    durations_in_seconds={"prediction": durations_in_seconds["prediction"] / len(image_list)}
-                ))
-            
-            time_end = time.time() - time_start
-            durations_in_seconds["postprocess"] = time_end
-            
+                if verbose >= 2:
+                    logger.info(
+                        f"Batch image {i+1}/{len(image_list)}: detections={len(filtered_predictions)}"
+                    )
+                durations_payload: Dict[str, Any] = {
+                    "prediction": per_image_pred_time,
+                    "postprocess": per_image_post_time,
+                }
+                if return_batch_timings:
+                    durations_payload.update(
+                        {
+                            "batch_prediction_total": durations_in_seconds["prediction"],
+                            "batch_postprocess_total": durations_in_seconds["postprocess"],
+                            "batch_size": len(image_list),
+                        }
+                    )
+                results.append(
+                    PredictionResult(
+                        image=image_list[i],
+                        object_prediction_list=filtered_predictions,
+                        durations_in_seconds=durations_payload,
+                    )
+                )
+
             return results
-            
         except Exception as e:
-            # Fall back to sequential processing if batch fails
-            logger.warning(f"Batch inference failed: {e}. Falling back to sequential processing.")
-            
-    # Sequential fallback for unsupported models or batch failure
+            logger.warning(
+                f"Batch inference failed on device {getattr(detection_model, 'device', 'unknown')}: {e}. Falling back to sequential processing."
+            )
+    else:
+        if isinstance(detection_model, UltralyticsDetectionModel) and not can_batch and not is_cpu:
+            logger.warning("Batch disabled due to device constraints; proceeding sequentially.")
+        if is_cpu and len(image_list) > 1:
+            logger.debug(
+                f"CPU device detected: processing {len(image_list)} images sequentially (batch disabled)."
+            )
+
+    # Sequential processing path (fallback or CPU)
     for i, image in enumerate(image_list):
         shift_amount = shift_amount_list[i] if i < len(shift_amount_list) else [0, 0]
         result = get_prediction(
@@ -240,7 +283,6 @@ def get_batch_prediction(
             exclude_classes_by_id=exclude_classes_by_id,
         )
         results.append(result)
-    
     return results
 
 
@@ -332,8 +374,22 @@ def get_sliced_prediction(
     # for profiling
     durations_in_seconds = dict()
 
-    # use batch_size but ensure it's at least 1
-    num_batch = max(1, batch_size)
+    # Automatically adjust batch_size based on device: batch for GPU, single for CPU
+    # Check if model is using CPU device
+    is_cpu = False
+    if hasattr(detection_model, 'device'):
+        device_str = str(detection_model.device).lower()
+        is_cpu = 'cpu' in device_str
+    
+    # Force batch_size=1 for CPU devices, otherwise use provided batch_size
+    if is_cpu and batch_size > 1:
+        if verbose >= 1:
+            logger.warning(f"CPU device detected. Overriding batch_size={batch_size} to batch_size=1 for optimal CPU performance.")
+        num_batch = 1
+    else:
+        # use batch_size but ensure it's at least 1
+        num_batch = max(1, batch_size)
+    
     # create slices from full image
     time_start = time.time()
     slice_image_result = slice_image(
@@ -393,23 +449,25 @@ def get_sliced_prediction(
             shift_amount_list.append(slice_image_result.starting_pixels[slice_idx])
         
         # perform batch prediction
-        if batch_size_actual == 1 and num_batch == 1:
+        if num_batch == 1:
             # Single slice prediction (only when batch_size=1 was requested)
-            prediction_result = get_prediction(
-                image=image_list[0],
-                detection_model=detection_model,
-                shift_amount=shift_amount_list[0],
-                full_shape=[
-                    slice_image_result.original_image_height,
-                    slice_image_result.original_image_width,
-                ],
-                exclude_classes_by_name=exclude_classes_by_name,
-                exclude_classes_by_id=exclude_classes_by_id,
-            )
-            # convert sliced predictions to full predictions
-            for object_prediction in prediction_result.object_prediction_list:
-                if object_prediction:  # if not empty
-                    object_prediction_list.append(object_prediction.get_shifted_object_prediction())
+            # Process each image in this group sequentially
+            for i in range(batch_size_actual):
+                prediction_result = get_prediction(
+                    image=image_list[i],
+                    detection_model=detection_model,
+                    shift_amount=shift_amount_list[i],
+                    full_shape=[
+                        slice_image_result.original_image_height,
+                        slice_image_result.original_image_width,
+                    ],
+                    exclude_classes_by_name=exclude_classes_by_name,
+                    exclude_classes_by_id=exclude_classes_by_id,
+                )
+                # convert sliced predictions to full predictions
+                for object_prediction in prediction_result.object_prediction_list:
+                    if object_prediction:  # if not empty
+                        object_prediction_list.append(object_prediction.get_shifted_object_prediction())
         else:
             # Batch prediction for multiple slices
             try:
@@ -423,6 +481,8 @@ def get_sliced_prediction(
                     ],
                     exclude_classes_by_name=exclude_classes_by_name,
                     exclude_classes_by_id=exclude_classes_by_id,
+                    verbose=verbose,
+                    return_batch_timings=True,
                 )
                 
                 # convert batch predictions to full predictions

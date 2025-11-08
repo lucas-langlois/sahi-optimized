@@ -84,6 +84,9 @@ mmdet = [
   # numpy 2 is not compatible with torch 2.1.2
   "numpy<2.0;python_version=='3.11'",
 ]
+gui = [
+  "gradio>=4.44.0",
+]
 ci = [
   # max supported pytorch version for python 3.8 is 2.4.1
   # CPU versions for Linux/Windows CI

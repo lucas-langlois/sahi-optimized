@@ -81,6 +81,21 @@ result = get_sliced_prediction(
 
 ## Performance Considerations
 
+### Automatic Device-Based Batch Processing
+The implementation now **automatically detects the device** and adjusts batch processing accordingly:
+- **GPU devices** (cuda, mps): Uses the specified `batch_size` parameter for parallel processing
+- **CPU devices**: Automatically overrides to `batch_size=1` for optimal sequential processing
+  - Batch processing on CPU provides minimal benefit and may actually slow down inference
+  - A warning is logged when CPU is detected and batch_size > 1 is specified
+
+### Advanced Diagnostics and Logging
+- Set `verbose=1` in `get_sliced_prediction` to log batch start/end with total prediction and conversion times.
+- Set `verbose=2` to additionally print detections per image in each batch.
+- Internally, `get_batch_prediction` supports `return_batch_timings=True` to embed batch totals into each `PredictionResult.durations_in_seconds`:
+    - `batch_prediction_total`: total time spent in model forward pass for the batch
+    - `batch_postprocess_total`: total time converting model outputs for the batch
+    - `batch_size`: number of images in the batch
+
 ### When Batch Processing is Most Effective
 1. **GPU Usage**: Batch processing shows the most benefit when using GPU acceleration
 2. **Many Small Slices**: Works best when images are divided into many slices

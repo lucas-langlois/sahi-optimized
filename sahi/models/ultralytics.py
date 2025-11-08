@@ -307,7 +307,7 @@ class UltralyticsDetectionModel(DetectionModel):
                 boxes = image_predictions[0].cpu().detach().numpy()
                 masks_or_points = image_predictions[1].cpu().detach().numpy()
             else:
-                boxes = image_predictions.data.cpu().detach().numpy()
+                boxes = image_predictions.cpu().detach().numpy()
                 masks_or_points = None
 
             # Get the original shape for this image
