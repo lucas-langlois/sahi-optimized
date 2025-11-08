@@ -10,9 +10,9 @@ Features:
  - Original filename preservation
 """
 
-import os
 import json
 import math
+import os
 import tempfile
 import zipfile
 from pathlib import Path
@@ -21,20 +21,34 @@ from typing import List, Tuple, Union
 import gradio as gr
 from PIL import Image, ImageDraw, ImageFont
 
-from sahi.predict import get_sliced_prediction
 from sahi.auto_model import AutoDetectionModel
+from sahi.predict import get_sliced_prediction
 
 # Color palette for classes (repeat as needed)
 PALETTE = [
-    (220, 20, 60), (34, 139, 34), (30, 144, 255), (255, 140, 0), (138, 43, 226),
-    (0, 206, 209), (199, 21, 133), (255, 215, 0), (70, 130, 180), (154, 205, 50),
-    (255, 99, 71), (0, 191, 255), (218, 112, 214), (244, 164, 96), (46, 139, 87)
+    (220, 20, 60),
+    (34, 139, 34),
+    (30, 144, 255),
+    (255, 140, 0),
+    (138, 43, 226),
+    (0, 206, 209),
+    (199, 21, 133),
+    (255, 215, 0),
+    (70, 130, 180),
+    (154, 205, 50),
+    (255, 99, 71),
+    (0, 191, 255),
+    (218, 112, 214),
+    (244, 164, 96),
+    (46, 139, 87),
 ]
+
 
 def _infer_image_filename(image_input: Union[str, Image.Image]) -> str:
     if isinstance(image_input, str):
         return Path(image_input).name
     return "uploaded_image.jpg"
+
 
 def draw_predictions(image_pil: Image.Image, object_prediction_list) -> Image.Image:
     vis = image_pil.copy().convert("RGB")
@@ -52,9 +66,10 @@ def draw_predictions(image_pil: Image.Image, object_prediction_list) -> Image.Im
         text = f"{cls_name} {score:.2f}"
         tw, th = draw.textsize(text, font=font)
         pad = 2
-        draw.rectangle([x1, y1 - th - 2*pad, x1 + tw + 2*pad, y1], fill=color)
+        draw.rectangle([x1, y1 - th - 2 * pad, x1 + tw + 2 * pad, y1], fill=color)
         draw.text((x1 + pad, y1 - th - pad), text, fill="white", font=font)
     return vis
+
 
 def run_inference(
     model_type: str,
@@ -222,9 +237,7 @@ def build_ui() -> gr.Blocks:
             info="MPS: Apple Silicon (M1/M2/M3), CUDA: NVIDIA GPU (Windows/Linux), CPU: All platforms (slower)",
         )
         conf_thres = gr.Slider(0.0, 1.0, value=0.25, step=0.01, label="Confidence Threshold")
-        image_size = gr.Slider(
-            256, 1280, value=640, step=32, label="Inference Image Size", info="Ultralytics imgsz"
-        )
+        image_size = gr.Slider(256, 1280, value=640, step=32, label="Inference Image Size", info="Ultralytics imgsz")
 
         gr.Markdown("### SAHI Slice Settings")
         slice_height = gr.Slider(128, 2048, value=640, step=32, label="Slice Height")
@@ -236,9 +249,7 @@ def build_ui() -> gr.Blocks:
         run_btn = gr.Button("Run Inference", variant="primary")
 
         with gr.Row():
-            image_input = gr.Image(
-                type="filepath", label="Input Image", sources=["upload"], image_mode="RGB"
-            )
+            image_input = gr.Image(type="filepath", label="Input Image", sources=["upload"], image_mode="RGB")
             output_image_pred = gr.Image(type="pil", label="Predictions")
 
         with gr.Row():

@@ -144,13 +144,13 @@ class UltralyticsDetectionModel(DetectionModel):
 
         # Convert RGB to BGR for YOLO and prepare batch
         batch_images = [image[:, :, ::-1] for image in image_list]
-        
+
         # Perform batch inference
         prediction_results = self.model(batch_images, **kwargs)
 
         # Process results similar to single inference
         processed_results = []
-        
+
         for result in prediction_results:
             if self.has_mask:
                 from ultralytics.engine.results import Masks
@@ -161,32 +161,34 @@ class UltralyticsDetectionModel(DetectionModel):
                         device = self.model.device
                     else:
                         device = "cpu"  # Default for ONNX models
-                    result.masks = Masks(
-                        torch.tensor([], device=device), result.boxes.orig_shape
-                    )
+                    result.masks = Masks(torch.tensor([], device=device), result.boxes.orig_shape)
 
-                processed_results.append((
-                    result.boxes.data,
-                    result.masks.data,
-                ))
+                processed_results.append(
+                    (
+                        result.boxes.data,
+                        result.masks.data,
+                    )
+                )
             elif self.is_obb:
                 # For OBB task, get OBB points in xyxyxyxy format
                 device = getattr(self.model, "device", "cpu")
-                processed_results.append((
-                    # Get OBB data: xyxy, conf, cls
-                    torch.cat(
-                        [
-                            result.obb.xyxy,  # box coordinates
-                            result.obb.conf.unsqueeze(-1),  # confidence scores
-                            result.obb.cls.unsqueeze(-1),  # class ids
-                        ],
-                        dim=1,
+                processed_results.append(
+                    (
+                        # Get OBB data: xyxy, conf, cls
+                        torch.cat(
+                            [
+                                result.obb.xyxy,  # box coordinates
+                                result.obb.conf.unsqueeze(-1),  # confidence scores
+                                result.obb.cls.unsqueeze(-1),  # class ids
+                            ],
+                            dim=1,
+                        )
+                        if result.obb is not None
+                        else torch.empty((0, 6), device=device),
+                        # Get OBB points in (N, 4, 2) format
+                        result.obb.xyxyxyxy if result.obb is not None else torch.empty((0, 4, 2), device=device),
                     )
-                    if result.obb is not None
-                    else torch.empty((0, 6), device=device),
-                    # Get OBB points in (N, 4, 2) format
-                    result.obb.xyxyxyxy if result.obb is not None else torch.empty((0, 4, 2), device=device),
-                ))
+                )
             else:  # Standard detection
                 processed_results.append(result.boxes.data)
 
@@ -212,7 +214,7 @@ class UltralyticsDetectionModel(DetectionModel):
             shift_amount_list = [[0, 0]] * len(self._original_predictions)
         if full_shape_list is None:
             full_shape_list = [None] * len(self._original_predictions)
-            
+
         self._create_object_prediction_list_from_original_predictions(
             shift_amount_list=shift_amount_list,
             full_shape_list=full_shape_list,
@@ -311,9 +313,9 @@ class UltralyticsDetectionModel(DetectionModel):
                 masks_or_points = None
 
             # Get the original shape for this image
-            if hasattr(self, '_original_shapes') and len(self._original_shapes) > image_ind:
+            if hasattr(self, "_original_shapes") and len(self._original_shapes) > image_ind:
                 original_shape = self._original_shapes[image_ind]
-            elif hasattr(self, '_original_shape'):
+            elif hasattr(self, "_original_shape"):
                 original_shape = self._original_shape
             else:
                 # Fallback to full_shape if available
@@ -346,9 +348,7 @@ class UltralyticsDetectionModel(DetectionModel):
                     if self.has_mask:
                         bool_mask = masks_or_points[pred_ind]
                         # Resize mask to original image size
-                        bool_mask = cv2.resize(
-                            bool_mask.astype(np.uint8), (original_shape[1], original_shape[0])
-                        )
+                        bool_mask = cv2.resize(bool_mask.astype(np.uint8), (original_shape[1], original_shape[0]))
                         segmentation = get_coco_segmentation_from_bool_mask(bool_mask)
                     else:  # is_obb
                         obb_points = masks_or_points[pred_ind]  # Get OBB points for this prediction

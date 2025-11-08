@@ -3,7 +3,7 @@
 
 import os
 import time
-from typing import Generator, List, Optional, Union
+from typing import Any, Dict, Generator, List, Optional, Union
 
 import numpy as np
 from PIL import Image
@@ -18,7 +18,6 @@ if is_available("torch"):
 
 from functools import cmp_to_key
 
-import numpy as np
 from tqdm import tqdm
 
 from sahi.auto_model import AutoDetectionModel
@@ -164,7 +163,7 @@ def get_batch_prediction(
         shift_amount_list: List[List[int]]
             List of shift amounts for each image, should be in the form of [[shift_x, shift_y], ...]
         full_shape: List[int]
-            Size of the full image, should be in the form of [height, width]  
+            Size of the full image, should be in the form of [height, width]
         exclude_classes_by_name: Optional[List[str]]
             None: if no classes are excluded
             List[str]: set of classes to exclude using its/their class label name/s
@@ -175,10 +174,10 @@ def get_batch_prediction(
         List[PredictionResult]: List of prediction results for each image
     """
     from sahi.models.ultralytics import UltralyticsDetectionModel
-    
+
     if shift_amount_list is None:
         shift_amount_list = [[0, 0]] * len(image_list)
-        
+
     durations_in_seconds: Dict[str, float] = {}
     results: List[PredictionResult] = []
 
@@ -235,9 +234,7 @@ def get_batch_prediction(
                     object_prediction_list, exclude_classes_by_name, exclude_classes_by_id
                 )
                 if verbose >= 2:
-                    logger.info(
-                        f"Batch image {i+1}/{len(image_list)}: detections={len(filtered_predictions)}"
-                    )
+                    logger.info(f"Batch image {i + 1}/{len(image_list)}: detections={len(filtered_predictions)}")
                 durations_payload: Dict[str, Any] = {
                     "prediction": per_image_pred_time,
                     "postprocess": per_image_post_time,
@@ -267,9 +264,7 @@ def get_batch_prediction(
         if isinstance(detection_model, UltralyticsDetectionModel) and not can_batch and not is_cpu:
             logger.warning("Batch disabled due to device constraints; proceeding sequentially.")
         if is_cpu and len(image_list) > 1:
-            logger.debug(
-                f"CPU device detected: processing {len(image_list)} images sequentially (batch disabled)."
-            )
+            logger.debug(f"CPU device detected: processing {len(image_list)} images sequentially (batch disabled).")
 
     # Sequential processing path (fallback or CPU)
     for i, image in enumerate(image_list):
@@ -362,7 +357,7 @@ def get_sliced_prediction(
             None: if no classes are excluded
             List[int]: set of classes to exclude using one or more IDs
         batch_size: int
-            Number of slices to process simultaneously for inference. 
+            Number of slices to process simultaneously for inference.
             Default: 1 (sequential processing)
             Higher values can improve GPU utilization but require more memory.
     Returns:
@@ -377,19 +372,21 @@ def get_sliced_prediction(
     # Automatically adjust batch_size based on device: batch for GPU, single for CPU
     # Check if model is using CPU device
     is_cpu = False
-    if hasattr(detection_model, 'device'):
+    if hasattr(detection_model, "device"):
         device_str = str(detection_model.device).lower()
-        is_cpu = 'cpu' in device_str
-    
+        is_cpu = "cpu" in device_str
+
     # Force batch_size=1 for CPU devices, otherwise use provided batch_size
     if is_cpu and batch_size > 1:
         if verbose >= 1:
-            logger.warning(f"CPU device detected. Overriding batch_size={batch_size} to batch_size=1 for optimal CPU performance.")
+            logger.warning(
+                f"CPU device detected. Overriding batch_size={batch_size} to batch_size=1 for optimal CPU performance."
+            )
         num_batch = 1
     else:
         # use batch_size but ensure it's at least 1
         num_batch = max(1, batch_size)
-    
+
     # create slices from full image
     time_start = time.time()
     slice_image_result = slice_image(
@@ -437,17 +434,17 @@ def get_sliced_prediction(
         # prepare batch
         image_list = []
         shift_amount_list = []
-        
+
         # calculate the slice range for this batch
         start_idx = group_ind * num_batch
         end_idx = min(start_idx + num_batch, num_slices)
         batch_size_actual = end_idx - start_idx
-        
+
         for image_ind in range(batch_size_actual):
             slice_idx = start_idx + image_ind
             image_list.append(slice_image_result.images[slice_idx])
             shift_amount_list.append(slice_image_result.starting_pixels[slice_idx])
-        
+
         # perform batch prediction
         if num_batch == 1:
             # Single slice prediction (only when batch_size=1 was requested)
@@ -484,7 +481,7 @@ def get_sliced_prediction(
                     verbose=verbose,
                     return_batch_timings=True,
                 )
-                
+
                 # convert batch predictions to full predictions
                 for prediction_result in batch_prediction_result:
                     for object_prediction in prediction_result.object_prediction_list:
