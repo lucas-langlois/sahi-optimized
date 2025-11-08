@@ -8,6 +8,7 @@ on:
       - "**.cff"
       - "docs/**"
       - "demo/**"
+      - "scripts/**"
   pull_request:
     branches: [main]
     paths-ignore:
@@ -16,6 +17,12 @@ on:
       - "**.cff"
       - "docs/**"
       - "demo/**"
+      - "scripts/**"
+
+concurrency:
+  group: ruff-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   ruff:
     runs-on: ubuntu-latest
