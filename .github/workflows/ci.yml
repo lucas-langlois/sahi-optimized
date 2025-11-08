@@ -1,10 +1,6 @@
 name: CI with uv
 on:
-  # Temporarily disabled to stop failure cascade - will re-enable once stable
-  workflow_dispatch:
-  schedule:
-    - cron: "0 0 * * *"
-  never_push:
+  push:
     branches: [main]
     paths-ignore:
       - "**.md"

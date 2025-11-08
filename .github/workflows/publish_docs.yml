@@ -1,12 +1,10 @@
 name: 🛠️ Build and 📚 Publish Docs
 
 on:
-  # Temporarily disabled to stop failure cascade - will re-enable once stable
-  workflow_dispatch:
-  never_push:
+  push:
     branches:
       - main
-  workflow_dispatch_original:
+  workflow_dispatch:
   release:
     types: [published]
 
