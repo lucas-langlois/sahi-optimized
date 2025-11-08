@@ -41,7 +41,7 @@ jobs:
 
       - name: 🏗️ Install dependencies
         run: |
-          uv pip install -r pyproject.toml --group docs
+          uv sync --group docs
 
       - name: ⚙️ Configure git for github-actions
         run: |
@@ -51,4 +51,5 @@ jobs:
       - name: 📚 Build and Publish Docs
         if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
         run: |
-          uv run mkdocs gh-deploy --force
+          source .venv/bin/activate
+          mkdocs gh-deploy --force
