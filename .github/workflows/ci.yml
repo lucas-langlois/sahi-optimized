@@ -8,6 +8,7 @@ on:
       - "**.cff"
       - "docs/**"
       - "demo/**"
+      - "scripts/**"
       - "context7.json"
       - "mkdocs.yml"
 
@@ -19,6 +20,7 @@ on:
       - "**.cff"
       - "docs/**"
       - "demo/**"
+      - "scripts/**"
       - "context7.json"
       - "mkdocs.yml"
 
